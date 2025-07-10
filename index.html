@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Helicopter Game with Moving Hills</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #87CEEB;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="game" width="800" height="600"></canvas>
+
+  <script>
+    // --- Utility to draw a filled triangle ---
+    function drawTriangle(ctx, p0, p1, p2, color) {
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.stroke();
+    }
+
+    // --- Setup Canvas ---
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const d = 400; // projection distance
+
+    // --- 3D Model (cube as helicopter placeholder) ---
+    const vertices = [
+      { x: -1, y: -1, z: -1 }, { x: 1, y: -1, z: -1 },
+      { x: 1, y: 1, z: -1 }, { x: -1, y: 1, z: -1 },
+      { x: -1, y: -1, z: 1 }, { x: 1, y: -1, z: 1 },
+      { x: 1, y: 1, z: 1 }, { x: -1, y: 1, z: 1 },
+    ];
+    const faces = [
+      [0, 1, 2, 3], [4, 5, 6, 7],
+      [0, 1, 5, 4], [2, 3, 7, 6],
+      [1, 2, 6, 5], [0, 3, 7, 4]
+    ];
+
+    // --- Hills as 3D objects ---
+    const hills = [
+      { x: -200, z: 50, radius: 150, color: '#2E8B57' },
+      { x: 300, z: 80, radius: 200, color: '#2E8B57' }
+    ];
+
+    // --- Game state variables ---
+    let heliPos = { x: 0, y: 0, z: 5 };
+    let heliAngle = 0;
+
+    // --- Projection and Rotation ---
+    function project(v) {
+      const scale = d / (v.z + d);
+      return { x: v.x * scale + width / 2, y: -v.y * scale + height / 2, scale };
+    }
+
+    function rotate(v, ax, ay, az) {
+      let { x, y, z } = v;
+      // X axis
+      let cos = Math.cos(ax), sin = Math.sin(ax);
+      [y, z] = [y * cos - z * sin, y * sin + z * cos];
+      // Y axis
+      cos = Math.cos(ay); sin = Math.sin(ay);
+      [x, z] = [x * cos - z * sin, x * sin + z * cos];
+      // Z axis
+      cos = Math.cos(az); sin = Math.sin(az);
+      [x, y] = [x * cos - y * sin, x * sin + y * cos];
+      return { x, y, z };
+    }
+
+    // --- Draw Hills with perspective ---
+    function drawHills() {
+      hills.forEach(hill => {
+        // Position of hill center in world
+        let world = { x: hill.x, y: -1, z: hill.z - heliPos.z };
+        // Project to screen
+        const p = project(world);
+        // Only draw if in front of camera
+        if (world.z > -d + 1) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, hill.radius * p.scale, Math.PI, 0, false);
+          ctx.lineTo(p.x + hill.radius * p.scale, height);
+          ctx.lineTo(p.x - hill.radius * p.scale, height);
+          ctx.closePath();
+          ctx.fillStyle = hill.color;
+          ctx.fill();
+        }
+      });
+    }
+
+    // --- Main Loop ---
+    function loop() {
+      ctx.clearRect(0, 0, width, height);
+
+      // Draw sky is background
+      // Draw hills and ground
+      drawHills();
+      ctx.fillStyle = '#228B22';
+      const groundY = project({ x: 0, y: -1, z: 0 - heliPos.z }).y;
+      ctx.fillRect(0, groundY, width, height - groundY);
+
+      // Draw helicopter cube
+      const transformed = vertices.map(v => {
+        // Apply rotation
+        let rv = rotate(v, 0, heliAngle, 0);
+        // Translate to helicopter world pos
+        return { x: rv.x + heliPos.x, y: rv.y + heliPos.y, z: rv.z + heliPos.z };
+      });
+
+      // Build triangles with depth
+      const tris = faces.flatMap(face => {
+        const [a, b, c, d] = face;
+        return [[a, b, c], [a, c, d]];
+      }).map(idxs => {
+        const pts3 = idxs.map(i => transformed[i]);
+        const depth = pts3.reduce((sum, p) => sum + p.z, 0) / 3;
+        const pts2 = pts3.map(p3 => project(p3));
+        return { pts2, depth };
+      });
+
+      // Painter's sort
+      tris.sort((a, b) => b.depth - a.depth);
+
+      // Draw polygons
+      tris.forEach(tri => {
+        drawTriangle(ctx, tri.pts2[0], tri.pts2[1], tri.pts2[2], '#6699CC');
+      });
+
+      requestAnimationFrame(loop);
+    }
+
+    // --- Input Handling ---
+    window.addEventListener('keydown', e => {
+      const speed = 1;
+      const turn = 0.05;
+      if (e.key === 'ArrowUp') heliPos.z -= speed;
+      if (e.key === 'ArrowDown') heliPos.z += speed;
+      if (e.key === 'ArrowLeft') heliAngle -= turn;
+      if (e.key === 'ArrowRight') heliAngle += turn;
+    });
+
+    loop();
+  </script>
+</body>
+
+</html>
